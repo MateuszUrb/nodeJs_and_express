@@ -7,7 +7,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "build:ui": "rm -rf dist && cd ../fullstack_dev/part2/phonebook && npm run build && cp -r dist ../../../nodejs_and_express",
-    "build:full": "npm run build:ui && npm add . && npm commit -m uibuild && git push"
+    "build:full": "npm run build:ui && git add . && git commit -m uibuild && git push"
   },
   "author": "Mateusz Urban",
   "license": "ISC",
