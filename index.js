@@ -1,7 +1,8 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
-let data = require("./data.json");
+const Person = require("./models/person");
 
 morgan.token("body", (req, res) => {
   return JSON.stringify(req.body);
@@ -16,39 +17,37 @@ app.use(
   morgan(":method :url :status :res[content-length] - :response-time ms :body"),
 );
 
-app.get("/", (req, res) => {
-  res.send("<h1>get persons json object from /api/persons</h1>");
-});
-
 app.get("/info", (req, res) => {
   const requestDate = new Date();
-  const resBody = `<p>Phonebook has info for ${data.length} people</p>
-  <p>${requestDate}</p>`;
-  res.send(resBody).end();
+  Person.countDocuments({}).then((count) => {
+    const resBody = `<p>Phonebook has info for ${count} people</p>
+    <p>${requestDate}</p>`;
+    res.send(resBody);
+  });
 });
 
 app.get("/api/persons", (req, res) => {
-  if (!data) {
-    res.status(404).end();
-  } else {
-    res.send(data);
-  }
+  Person.find({}).then((person) => {
+    res.json(person);
+  });
 });
 
 app.get("/api/persons/:id", (req, res) => {
   const id = req.params.id;
-  const person = data.find((person) => person.id === id);
-  if (!person) {
-    res.status(404).end();
-  } else {
-    res.json(person);
-  }
+  Person.findById(id).then((returnedPerson) => {
+    res.json(returnedPerson);
+  });
 });
 
 app.delete("/api/persons/:id", (req, res) => {
   const id = req.params.id;
-  data.filter((person) => person.id !== id);
-  res.status(204).end();
+  Person.findOneAndDelete({ _id: id })
+    .then(() => {
+      res.status(204).end();
+    })
+    .catch((error) => {
+      res.status(500).json({ error: "server error while deliting person" });
+    });
 });
 
 function generateId() {
@@ -56,22 +55,41 @@ function generateId() {
 }
 
 app.post("/api/persons", (req, res) => {
-  const reqBody = req.body;
-  const isReqNameInData = data.find((person) => person.name === reqBody.name);
+  const { name, number } = req.body;
 
-  if (!reqBody.name || !reqBody.number) {
+  if (!name || !number) {
     res.status(400).json({ error: "missing name or number" });
-  } else if (isReqNameInData) {
-    res.status(400).json({ error: "name must be unique" });
-  } else {
-    const newPerons = {
-      id: generateId(),
-      name: reqBody.name,
-      number: reqBody.number.toString(),
-    };
-    data = data.concat(newPerons);
-    res.json(data);
   }
+
+  const person = new Person({
+    name,
+    number: number.toString(),
+  });
+  person.save().then((savedPerson) => {
+    res.json(savedPerson);
+  });
+});
+
+app.put("/api/persons/:id", (req, res) => {
+  const id = req.params.id;
+  const { name, number } = req.body;
+
+  Person.findOneAndUpdate(
+    { _id: id },
+    { name, number },
+    { new: true, runValidators: true },
+  )
+    .then((updatedPerson) => {
+      if (updatedPerson) {
+        res.json(updatedPerson);
+      } else {
+        res.status(404).send({ error: "Person not found" });
+      }
+    })
+    .catch((error) => {
+      console.error(error);
+      res.status(400).send({ error: "Invalid data" });
+    });
 });
 
 function unknownEndpoint(req, res) {
@@ -80,7 +98,7 @@ function unknownEndpoint(req, res) {
 
 app.use(unknownEndpoint);
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT;
 app.listen(PORT, () => {
   console.info(`Server running on port: ${PORT}`);
 });
