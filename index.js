@@ -8,6 +8,15 @@ morgan.token("body", (req, res) => {
   return JSON.stringify(req.body);
 });
 
+function errorHanlder(error, req, res, next) {
+  if (error.name === "CastError") {
+    return res.status(400).json({ error: "incorect data" });
+  } else if (error.name === "ValidationError") {
+    return res.status(400).json({ error: error.message });
+  }
+  next(error);
+}
+
 const app = express();
 
 app.use(cors());
@@ -39,22 +48,19 @@ app.get("/api/persons/:id", (req, res) => {
   });
 });
 
-app.delete("/api/persons/:id", (req, res) => {
+app.delete("/api/persons/:id", (req, res, next) => {
   const id = req.params.id;
   Person.findOneAndDelete({ _id: id })
-    .then(() => {
-      res.status(204).end();
+    .then((person) => {
+      if (person) {
+        res.status(204).end();
+      }
+      res.status(404).end();
     })
-    .catch((error) => {
-      res.status(500).json({ error: "server error while deliting person" });
-    });
+    .catch((error) => next(error));
 });
 
-function generateId() {
-  return (Math.random() * Number.MAX_SAFE_INTEGER).toFixed(0);
-}
-
-app.post("/api/persons", (req, res) => {
+app.post("/api/persons", (req, res, next) => {
   const { name, number } = req.body;
 
   if (!name || !number) {
@@ -65,18 +71,25 @@ app.post("/api/persons", (req, res) => {
     name,
     number: number.toString(),
   });
-  person.save().then((savedPerson) => {
-    res.json(savedPerson);
-  });
+  person
+    .save()
+    .then((savedPerson) => {
+      res.json(savedPerson);
+    })
+    .catch((error) => next(error));
 });
 
-app.put("/api/persons/:id", (req, res) => {
+app.put("/api/persons/:id", (req, res, next) => {
   const id = req.params.id;
-  const { name, number } = req.body;
+  const { number } = req.body;
+
+  if (!number) {
+    return res.status(404).json({ error: "missing number" });
+  }
 
   Person.findOneAndUpdate(
     { _id: id },
-    { name, number },
+    { number },
     { new: true, runValidators: true },
   )
     .then((updatedPerson) => {
@@ -86,10 +99,7 @@ app.put("/api/persons/:id", (req, res) => {
         res.status(404).send({ error: "Person not found" });
       }
     })
-    .catch((error) => {
-      console.error(error);
-      res.status(400).send({ error: "Invalid data" });
-    });
+    .catch((error) => next(error));
 });
 
 function unknownEndpoint(req, res) {
@@ -98,6 +108,7 @@ function unknownEndpoint(req, res) {
 
 app.use(unknownEndpoint);
 
+app.use(errorHanlder);
 const PORT = process.env.PORT;
 app.listen(PORT, () => {
   console.info(`Server running on port: ${PORT}`);
